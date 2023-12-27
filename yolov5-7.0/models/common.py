@@ -1,4 +1,4 @@
-# YOLOv5s 🚀 by Ultralytics, GPL-3.0 license
+# YOLOv5 🚀 by Ultralytics, AGPL-3.0 license
 """
 Common modules
 """
@@ -21,18 +21,28 @@ import pandas as pd
 import requests
 import torch
 import torch.nn as nn
-from IPython.display import display
 from PIL import Image
 from torch.cuda import amp
+
+# Import 'ultralytics' package or install if if missing
+try:
+    import ultralytics
+
+    assert hasattr(ultralytics, '__version__')  # verify package is not directory
+except (ImportError, AssertionError):
+    import os
+
+    os.system('pip install -U ultralytics')
+    import ultralytics
+
+from ultralytics.utils.plotting import Annotator, colors, save_one_box
 
 from utils import TryExcept
 from utils.dataloaders import exif_transpose, letterbox
 from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suffix, check_version, colorstr,
-                           increment_path, is_notebook, make_divisible, non_max_suppression, scale_boxes, xywh2xyxy,
+                           increment_path, is_jupyter, make_divisible, non_max_suppression, scale_boxes, xywh2xyxy,
                            xyxy2xywh, yaml_load)
-from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode
-import torch.nn.functional as F
 
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
@@ -59,8 +69,6 @@ class Conv(nn.Module):
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
-
-
 
 
 class DWConv(Conv):
@@ -156,46 +164,6 @@ class CrossConv(nn.Module):
     def forward(self, x):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
-class C2f(nn.Module):
-    """Faster Implementation of CSP Bottleneck with 2 convolutions."""
-
-    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super().__init__()
-        self.c = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
-        self.cv2 = Conv((2 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
-        self.m = nn.ModuleList(Bottleneck_C2F(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n))
-
-    def forward(self, x):
-        """Forward pass through C2f layer."""
-        y = list(self.cv1(x).chunk(2, 1))
-        y.extend(m(y[-1]) for m in self.m)
-        return self.cv2(torch.cat(y, 1))
-
-    def forward_split(self, x):
-        """Forward pass using split() instead of chunk()."""
-        y = list(self.cv1(x).split((self.c, self.c), 1))
-        y.extend(m(y[-1]) for m in self.m)
-        return self.cv2(torch.cat(y, 1))
-
-class C2fGhost(C2f):
-    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super().__init__(c1, c2, n, shortcut, g, e)
-        self.c = int(c2 * e)  # hidden channels
-        self.m = nn.ModuleList(GhostBottleneck(self.c, self.c) for _ in range(n))
-
-
-class Bottleneck_C2F(nn.Module):
-    # Standard bottleneck
-    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5):  # ch_in, ch_out, shortcut, kernels, groups, expand
-        super().__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, c_, k[0], 1)
-        self.cv2 = Conv(c_, c2, k[1], 1, g=g)
-        self.add = shortcut and c1 == c2
-
-    def forward(self, x):
-        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 class C3(nn.Module):
     # CSP Bottleneck with 3 convolutions
@@ -260,7 +228,7 @@ class SPP(nn.Module):
 
 
 class SPPF(nn.Module):
-    # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5s by Glenn Jocher
+    # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
     def __init__(self, c1, c2, k=5):  # equivalent to SPP(k=(5, 9, 13))
         super().__init__()
         c_ = c1 // 2  # hidden channels
@@ -357,7 +325,7 @@ class Concat(nn.Module):
 
 
 class DetectMultiBackend(nn.Module):
-    # YOLOv5s MultiBackend class for python inference on various backends
+    # YOLOv5 MultiBackend class for python inference on various backends
     def __init__(self, weights='yolov5s.pt', device=torch.device('cpu'), dnn=False, data=None, fp16=False, fuse=True):
         # Usage:
         #   PyTorch:              weights = *.pt
@@ -377,7 +345,7 @@ class DetectMultiBackend(nn.Module):
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
         pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, triton = self._model_type(w)
-        fp16 &= pt or jit or onnx or engine  # FP16
+        fp16 &= pt or jit or onnx or engine or triton  # FP16
         nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
         stride = 32  # default stride
         cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
@@ -397,8 +365,9 @@ class DetectMultiBackend(nn.Module):
             model.half() if fp16 else model.float()
             if extra_files['config.txt']:  # load metadata dict
                 d = json.loads(extra_files['config.txt'],
-                               object_hook=lambda d: {int(k) if k.isdigit() else k: v
-                                                      for k, v in d.items()})
+                               object_hook=lambda d: {
+                                   int(k) if k.isdigit() else k: v
+                                   for k, v in d.items()})
                 stride, names = int(d['stride']), d['names']
         elif dnn:  # ONNX OpenCV DNN
             LOGGER.info(f'Loading {w} for ONNX OpenCV DNN inference...')
@@ -416,18 +385,18 @@ class DetectMultiBackend(nn.Module):
                 stride, names = int(meta['stride']), eval(meta['names'])
         elif xml:  # OpenVINO
             LOGGER.info(f'Loading {w} for OpenVINO inference...')
-            check_requirements('openvino')  # requires openvino-dev: https://pypi.org/project/openvino-dev/
+            check_requirements('openvino>=2023.0')  # requires openvino-dev: https://pypi.org/project/openvino-dev/
             from openvino.runtime import Core, Layout, get_batch
-            ie = Core()
+            core = Core()
             if not Path(w).is_file():  # if not *.xml
                 w = next(Path(w).glob('*.xml'))  # get *.xml file from *_openvino_model dir
-            network = ie.read_model(model=w, weights=Path(w).with_suffix('.bin'))
-            if network.get_parameters()[0].get_layout().empty:
-                network.get_parameters()[0].set_layout(Layout("NCHW"))
-            batch_dim = get_batch(network)
+            ov_model = core.read_model(model=w, weights=Path(w).with_suffix('.bin'))
+            if ov_model.get_parameters()[0].get_layout().empty:
+                ov_model.get_parameters()[0].set_layout(Layout('NCHW'))
+            batch_dim = get_batch(ov_model)
             if batch_dim.is_static:
                 batch_size = batch_dim.get_length()
-            executable_network = ie.compile_model(network, device_name="CPU")  # device_name="MYRIAD" for Intel NCS2
+            ov_compiled_model = core.compile_model(ov_model, device_name='AUTO')  # AUTO selects best available device
             stride, names = self._load_metadata(Path(w).with_suffix('.yaml'))  # load metadata
         elif engine:  # TensorRT
             LOGGER.info(f'Loading {w} for TensorRT inference...')
@@ -474,7 +443,7 @@ class DetectMultiBackend(nn.Module):
             import tensorflow as tf
 
             def wrap_frozen_graph(gd, inputs, outputs):
-                x = tf.compat.v1.wrap_function(lambda: tf.compat.v1.import_graph_def(gd, name=""), [])  # wrapped
+                x = tf.compat.v1.wrap_function(lambda: tf.compat.v1.import_graph_def(gd, name=''), [])  # wrapped
                 ge = x.graph.as_graph_element
                 return x.prune(tf.nest.map_structure(ge, inputs), tf.nest.map_structure(ge, outputs))
 
@@ -488,7 +457,7 @@ class DetectMultiBackend(nn.Module):
             gd = tf.Graph().as_graph_def()  # TF GraphDef
             with open(w, 'rb') as f:
                 gd.ParseFromString(f.read())
-            frozen_func = wrap_frozen_graph(gd, inputs="x:0", outputs=gd_outputs(gd))
+            frozen_func = wrap_frozen_graph(gd, inputs='x:0', outputs=gd_outputs(gd))
         elif tflite or edgetpu:  # https://www.tensorflow.org/lite/guide/python#install_tensorflow_lite_for_python
             try:  # https://coral.ai/docs/edgetpu/tflite-python/#update-existing-tf-lite-code-for-the-edge-tpu
                 from tflite_runtime.interpreter import Interpreter, load_delegate
@@ -510,12 +479,12 @@ class DetectMultiBackend(nn.Module):
             output_details = interpreter.get_output_details()  # outputs
             # load metadata
             with contextlib.suppress(zipfile.BadZipFile):
-                with zipfile.ZipFile(w, "r") as model:
+                with zipfile.ZipFile(w, 'r') as model:
                     meta_file = model.namelist()[0]
-                    meta = ast.literal_eval(model.read(meta_file).decode("utf-8"))
+                    meta = ast.literal_eval(model.read(meta_file).decode('utf-8'))
                     stride, names = int(meta['stride']), meta['names']
         elif tfjs:  # TF.js
-            raise NotImplementedError('ERROR: YOLOv5s TF.js inference is not supported')
+            raise NotImplementedError('ERROR: YOLOv5 TF.js inference is not supported')
         elif paddle:  # PaddlePaddle
             LOGGER.info(f'Loading {w} for PaddlePaddle inference...')
             check_requirements('paddlepaddle-gpu' if cuda else 'paddlepaddle')
@@ -534,7 +503,7 @@ class DetectMultiBackend(nn.Module):
             check_requirements('tritonclient[all]')
             from utils.triton import TritonRemoteModel
             model = TritonRemoteModel(url=w)
-            nhwc = model.runtime.startswith("tensorflow")
+            nhwc = model.runtime.startswith('tensorflow')
         else:
             raise NotImplementedError(f'ERROR: {w} is not a supported format')
 
@@ -547,7 +516,7 @@ class DetectMultiBackend(nn.Module):
         self.__dict__.update(locals())  # assign all variables to self
 
     def forward(self, im, augment=False, visualize=False):
-        # YOLOv5s MultiBackend inference
+        # YOLOv5 MultiBackend inference
         b, ch, h, w = im.shape  # batch, channel, height, width
         if self.fp16 and im.dtype != torch.float16:
             im = im.half()  # to FP16
@@ -567,7 +536,7 @@ class DetectMultiBackend(nn.Module):
             y = self.session.run(self.output_names, {self.session.get_inputs()[0].name: im})
         elif self.xml:  # OpenVINO
             im = im.cpu().numpy()  # FP32
-            y = list(self.executable_network([im]).values())
+            y = list(self.ov_compiled_model(im).values())
         elif self.engine:  # TensorRT
             if self.dynamic and im.shape != self.bindings['images'].shape:
                 i = self.model.get_binding_index('images')
@@ -584,7 +553,7 @@ class DetectMultiBackend(nn.Module):
         elif self.coreml:  # CoreML
             im = im.cpu().numpy()
             im = Image.fromarray((im[0] * 255).astype('uint8'))
-            # im = im.resize((192, 320), Image.ANTIALIAS)
+            # im = im.resize((192, 320), Image.BILINEAR)
             y = self.model.predict({'image': im})  # coordinates are xywh normalized
             if 'confidence' in y:
                 box = xywh2xyxy(y['coordinates'] * [[w, h, w, h]])  # xyxy pixels
@@ -651,7 +620,7 @@ class DetectMultiBackend(nn.Module):
         url = urlparse(p)  # if url may be Triton inference server
         types = [s in Path(p).name for s in sf]
         types[8] &= not types[9]  # tflite &= not edgetpu
-        triton = not any(types) and all([any(s in url.scheme for s in ["http", "grpc"]), url.netloc])
+        triton = not any(types) and all([any(s in url.scheme for s in ['http', 'grpc']), url.netloc])
         return types + [triton]
 
     @staticmethod
@@ -664,7 +633,7 @@ class DetectMultiBackend(nn.Module):
 
 
 class AutoShape(nn.Module):
-    # YOLOv5s input-robust model wrapper for passing cv2/np/PIL/torch inputs. Includes preprocessing, inference and NMS
+    # YOLOv5 input-robust model wrapper for passing cv2/np/PIL/torch inputs. Includes preprocessing, inference and NMS
     conf = 0.25  # NMS confidence threshold
     iou = 0.45  # NMS IoU threshold
     agnostic = False  # NMS class-agnostic
@@ -763,7 +732,7 @@ class AutoShape(nn.Module):
 
 
 class Detections:
-    # YOLOv5s detections class for inference results
+    # YOLOv5 detections class for inference results
     def __init__(self, ims, pred, files, times=(0, 0, 0), names=None, shape=None):
         super().__init__()
         d = pred[0].device  # device
@@ -810,7 +779,11 @@ class Detections:
 
             im = Image.fromarray(im.astype(np.uint8)) if isinstance(im, np.ndarray) else im  # from np
             if show:
-                display(im) if is_notebook() else im.show(self.files[i])
+                if is_jupyter():
+                    from IPython.display import display
+                    display(im)
+                else:
+                    im.show(self.files[i])
             if save:
                 f = self.files[i]
                 im.save(save_dir / f)  # save
@@ -871,11 +844,11 @@ class Detections:
         return self._run(pprint=True)  # print results
 
     def __repr__(self):
-        return f'YOLOv5s {self.__class__} instance\n' + self.__str__()
+        return f'YOLOv5 {self.__class__} instance\n' + self.__str__()
 
 
 class Proto(nn.Module):
-    # YOLOv5s mask Proto module for segmentation models
+    # YOLOv5 mask Proto module for segmentation models
     def __init__(self, c1, c_=256, c2=32):  # ch_in, number of protos, number of masks
         super().__init__()
         self.cv1 = Conv(c1, c_, k=3)
@@ -888,929 +861,23 @@ class Proto(nn.Module):
 
 
 class Classify(nn.Module):
-    # YOLOv5s classification head, i.e. x(b,c1,20,20) to x(b,c2)
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1):  # ch_in, ch_out, kernel, stride, padding, groups
+    # YOLOv5 classification head, i.e. x(b,c1,20,20) to x(b,c2)
+    def __init__(self,
+                 c1,
+                 c2,
+                 k=1,
+                 s=1,
+                 p=None,
+                 g=1,
+                 dropout_p=0.0):  # ch_in, ch_out, kernel, stride, padding, groups, dropout probability
         super().__init__()
         c_ = 1280  # efficientnet_b0 size
         self.conv = Conv(c1, c_, k, s, autopad(k, p), g)
         self.pool = nn.AdaptiveAvgPool2d(1)  # to x(b,c_,1,1)
-        self.drop = nn.Dropout(p=0.0, inplace=True)
+        self.drop = nn.Dropout(p=dropout_p, inplace=True)
         self.linear = nn.Linear(c_, c2)  # to x(b,c2)
 
     def forward(self, x):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
-
-
-
-
-
-
-
-class h_sigmoid(nn.Module):
-    def __init__(self, inplace=True):
-        super(h_sigmoid, self).__init__()
-        self.relu = nn.ReLU6(inplace=inplace)
-
-    def forward(self, x):
-        return self.relu(x + 3) / 6
-
-
-class h_swish(nn.Module):
-    def __init__(self, inplace=True):
-        super(h_swish, self).__init__()
-        self.sigmoid = h_sigmoid(inplace=inplace)
-
-    def forward(self, x):
-        return x * self.sigmoid(x)
-
-
-class SELayer(nn.Module):
-    def __init__(self, channel, reduction=4):
-        super(SELayer, self).__init__()
-        # Squeeze
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        # Excitation(FC+ReLU+FC+Sigmoid)
-        self.fc = nn.Sequential(
-            nn.Linear(channel, channel // reduction),
-            nn.ReLU(inplace=True),
-            nn.Linear(channel // reduction, channel),
-            h_sigmoid()
-        )
-
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x)
-        y = y.view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y
-
-
-class conv_bn_hswish(nn.Module):
-    """
-    This equals to
-    def conv_3x3_bn(inp, oup, stride):
-        return nn.Sequential(
-            nn.Conv2d(inp, oup, 3, stride, 1, bias=False),
-            nn.BatchNorm2d(oup),
-            h_swish()
-        )
-    """
-
-    def __init__(self, c1, c2, stride):
-        super(conv_bn_hswish, self).__init__()
-        self.conv = nn.Conv2d(c1, c2, 3, stride, 1, bias=False)
-        self.bn = nn.BatchNorm2d(c2)
-        self.act = h_swish()
-
-    def forward(self, x):
-        return self.act(self.bn(self.conv(x)))
-
-    def fuseforward(self, x):
-        return self.act(self.conv(x))
-
-
-class MobileNet_Block(nn.Module):
-    def __init__(self, inp, oup, hidden_dim, kernel_size, stride, use_se, use_hs):
-        super(MobileNet_Block, self).__init__()
-        assert stride in [1, 2]
-
-        self.identity = stride == 1 and inp == oup
-
-        if inp == hidden_dim:
-            self.conv = nn.Sequential(
-                # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
-                          bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                h_swish() if use_hs else nn.ReLU(inplace=True),
-                # Squeeze-and-Excite
-                SELayer(hidden_dim) if use_se else nn.Sequential(),
-                # pw-linear
-                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(oup),
-            )
-        else:
-
-            self.conv = nn.Sequential(
-                # pw
-                nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                h_swish() if use_hs else nn.ReLU(inplace=True),
-                # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
-                          bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                # Squeeze-and-Excite
-                SELayer(hidden_dim) if use_se else nn.Sequential(),
-                h_swish() if use_hs else nn.ReLU(inplace=True),
-                # pw-linear
-                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(oup),
-            )
-
-    def forward(self, x):
-        y = self.conv(x)
-        if self.identity:
-            return x + y
-        else:
-            return y
-
-
-class ConvBNReLU(nn.Sequential):  # 该函数主要做卷积 池化 ReLU6激活操作
-    def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, groups=1):
-        padding = (kernel_size - 1) // 2  # 池化 = （步长-1）整除2
-        super(ConvBNReLU, self).__init__(  # 调用ConvBNReLU父类添加模块
-            nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding, bias=False, groups=groups),  # bias默认为False
-            nn.BatchNorm2d(out_planes),
-            nn.ReLU6(inplace=True))
-
-
-class InvertedResidual(nn.Module):  # 该模块主要实现了倒残差模块
-    def __init__(self, inp, oup, stride, expand_ratio):  # inp 输入 oup 输出 stride步长 exoand_ratio 按比例扩张
-        super(InvertedResidual, self).__init__()
-        self.stride = stride
-        assert stride in [1, 2]
-        hidden_dim = int(round(inp * expand_ratio))  # 由于有到残差模块有1*1,3*3的卷积模块，所以可以靠expand_rarton来进行升维
-        self.use_res_connect = self.stride == 1 and inp == oup  # 残差连接的判断条件：当步长=1且输入矩阵与输出矩阵的shape相同时进行
-        layers = []
-        if expand_ratio != 1:  # 如果expand_ratio不等于1，要做升维操作，对应图中的绿色模块
-            # pw
-            layers.append(ConvBNReLU(inp, hidden_dim, kernel_size=1))  # 这里添加的是1*1的卷积操作
-        layers.extend([
-            # dw
-            ConvBNReLU(hidden_dim, hidden_dim, stride=stride, groups=hidden_dim),
-            # 这里做3*3的卷积操作，步长可能是1也可能是2,groups=hidden_dim表示这里使用了分组卷积的操作，对应图上的蓝色模块
-
-            # pw-linear
-            nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),  # 对应图中的黄色模块
-            nn.BatchNorm2d(oup),
-        ])
-        self.conv = nn.Sequential(*layers)  # 将layers列表中的元素解开依次传入nn.Sequential
-
-    def forward(self, x):
-        if self.use_res_connect:  # 如果使用了残差连接，就会进行一个x+的操作
-            return x + self.conv(x)
-        else:
-            return self.conv(x)  # 否则不做操作
-
-
-
-
-
-
-
-
-
-
-
-
-class DP_Conv(nn.Module):
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
-        super(DP_Conv, self).__init__()
-        self.conv = nn.Conv2d(c1, c1, kernel_size=3, stride=1, padding=1, groups=c1)
-        self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=s)
-        self.bn = nn.BatchNorm2d(c2)
-        self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-
-    def forward(self, x):
-        return self.act(self.bn(self.conv(x)))
-
-    def fuseforward(self, x):
-        return self.act(self.conv(x))
-
-class DP_Bottleneck(nn.Module):
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
-        super(DP_Bottleneck, self).__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = DP_Conv(c1, c_, 1)
-        self.cv2 = DP_Conv(c_, c2, 1)
-        self.add = shortcut and c1 == c2
-
-    def forward(self, x):  # 如果shortcut并且输入输出通道相同则跳层相加
-        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
-
-class DP_C3(nn.Module):
-    # CSP Bottleneck with 3 convolutions
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super(DP_C3, self).__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = DP_Conv(c1, c_, 1)
-        self.cv2 = DP_Conv(c1, c_, 1)
-        self.cv3 = DP_Conv(2 * c_, c2, 1)  # act=FReLU(c2)
-        self.m = nn.Sequential(*[DP_Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])  # n个残差组件(Bottleneck)
-        # self.m = nn.Sequential(*[CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)])
-
-    def forward(self, x):
-        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
-
-
-
-
-
-
-
-
-# BiFPN
-# 两个特征图add操作
-class BiFPN_Add2(nn.Module):
-    def __init__(self, c1, c2):
-        super(BiFPN_Add2, self).__init__()
-        # 设置可学习参数 nn.Parameter的作用是：将一个不可训练的类型Tensor转换成可以训练的类型parameter
-        # 并且会向宿主模型注册该参数 成为其一部分 即model.parameters()会包含这个parameter
-        # 从而在参数优化的时候可以自动一起优化
-        self.w = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.epsilon = 0.0001
-        self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=1, padding=0)
-        self.silu = nn.SiLU()
-
-    def forward(self, x):
-        w = self.w
-        weight = w / (torch.sum(w, dim=0) + self.epsilon)
-        return self.conv(self.silu(weight[0] * x[0] + weight[1] * x[1]))
-
-
-# 三个特征图add操作
-class BiFPN_Add3(nn.Module):
-    def __init__(self, c1, c2):
-        super(BiFPN_Add3, self).__init__()
-        self.w = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-        self.epsilon = 0.0001
-        self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=1, padding=0)
-        self.silu = nn.SiLU()
-
-    def forward(self, x):
-        w = self.w
-        weight = w / (torch.sum(w, dim=0) + self.epsilon)
-        # Fast normalized fusion
-        return self.conv(self.silu(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
-
-
-# 结合BiFPN 设置可学习参数 学习不同分支的权重
-# 两个分支concat操作
-class BiFPN_Concat2(nn.Module):
-    def __init__(self, dimension=1):
-        super(BiFPN_Concat2, self).__init__()
-        self.d = dimension
-        self.w = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.epsilon = 0.0001
-
-    def forward(self, x):
-        w = self.w
-        weight = w / (torch.sum(w, dim=0) + self.epsilon)  # 将权重进行归一化
-        # Fast normalized fusion
-        x = [weight[0] * x[0], weight[1] * x[1]]
-        return torch.cat(x, self.d)
-
-
-# 三个分支concat操作
-class BiFPN_Concat3(nn.Module):
-    def __init__(self, dimension=1):
-        super(BiFPN_Concat3, self).__init__()
-        self.d = dimension
-        # 设置可学习参数 nn.Parameter的作用是：将一个不可训练的类型Tensor转换成可以训练的类型parameter
-        # 并且会向宿主模型注册该参数 成为其一部分 即model.parameters()会包含这个parameter
-        # 从而在参数优化的时候可以自动一起优化
-        self.w = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-        self.epsilon = 0.0001
-
-    def forward(self, x):
-        w = self.w
-        weight = w / (torch.sum(w, dim=0) + self.epsilon)  # 将权重进行归一化
-        # Fast normalized fusion
-        x = [weight[0] * x[0], weight[1] * x[1], weight[2] * x[2]]
-        return torch.cat(x, self.d)
-
-
-
-
-class CA_Block(nn.Module):
-    def __init__(self, channel, reduction=16):
-        super(CA_Block, self).__init__()
-
-        self.conv_1x1 = nn.Conv2d(in_channels=channel, out_channels=channel // reduction, kernel_size=1, stride=1,
-                                  bias=False)
-
-        self.relu = nn.ReLU()
-        self.bn = nn.BatchNorm2d(channel // reduction)
-
-        self.F_h = nn.Conv2d(in_channels=channel // reduction, out_channels=channel, kernel_size=1, stride=1,
-                             bias=False)
-        self.F_w = nn.Conv2d(in_channels=channel // reduction, out_channels=channel, kernel_size=1, stride=1,
-                             bias=False)
-
-        self.sigmoid_h = nn.Sigmoid()
-        self.sigmoid_w = nn.Sigmoid()
-
-    def forward(self, x):
-        _, _, h, w = x.size()
-
-        x_h = torch.mean(x, dim=3, keepdim=True).permute(0, 1, 3, 2)
-        x_w = torch.mean(x, dim=2, keepdim=True)
-
-        x_cat_conv_relu = self.relu(self.bn(self.conv_1x1(torch.cat((x_h, x_w), 3))))
-
-        x_cat_conv_split_h, x_cat_conv_split_w = x_cat_conv_relu.split([h, w], 3)
-
-        s_h = self.sigmoid_h(self.F_h(x_cat_conv_split_h.permute(0, 1, 3, 2)))
-        s_w = self.sigmoid_w(self.F_w(x_cat_conv_split_w))
-
-        out = x * s_h.expand_as(x) * s_w.expand_as(x)
-        return out
-
-
-# CBAM
-class ChannelAttention(nn.Module):
-    def __init__(self, in_planes, ratio=16):
-        super(ChannelAttention, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
-        self.f1 = nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False)
-        self.relu = nn.ReLU()
-        self.f2 = nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        avg_out = self.f2(self.relu(self.f1(self.avg_pool(x))))
-        max_out = self.f2(self.relu(self.f1(self.max_pool(x))))
-        out = self.sigmoid(avg_out + max_out)
-        return out
-
-
-class SpatialAttention(nn.Module):
-    def __init__(self, kernel_size=7):
-        super(SpatialAttention, self).__init__()
-        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
-        padding = 3 if kernel_size == 7 else 1
-        # (特征图的大小-算子的size+2*padding)/步长+1
-        self.conv = nn.Conv2d(2, 1, kernel_size, padding=padding, bias=False)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        # 1*h*w
-        avg_out = torch.mean(x, dim=1, keepdim=True)
-        max_out, _ = torch.max(x, dim=1, keepdim=True)
-        x = torch.cat([avg_out, max_out], dim=1)
-        # 2*h*w
-        x = self.conv(x)
-        # 1*h*w
-        return self.sigmoid(x)
-
-
-class CBAMBottleneck(nn.Module):
-    # ch_in, ch_out, shortcut, groups, expansion, ratio, kernel_size
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, ratio=16, kernel_size=7):
-        super(CBAMBottleneck, self).__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c_, c2, 3, 1, g=g)
-        self.add = shortcut and c1 == c2
-        # 加入CBAM模块
-        self.channel_attention = ChannelAttention(c2, ratio)
-        self.spatial_attention = SpatialAttention(kernel_size)
-
-    def forward(self, x):
-        # 考虑加入CBAM模块的位置：bottleneck模块刚开始时、bottleneck模块中shortcut之前，这里选择在shortcut之前
-        x2 = self.cv2(self.cv1(x))  # x和x2的channel数相同
-        # 在bottleneck模块中shortcut之前加入CBAM模块
-        out = self.channel_attention(x2) * x2
-        # print('outchannels:{}'.format(out.shape))
-        out = self.spatial_attention(out) * out
-        return x + out if self.add else out
-
-
-class C3_CBAM(C3):
-    # C3 module with CBAMBottleneck()
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
-        super().__init__(c1, c2, n, shortcut, g, e)
-        c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*(CBAMBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
-
-
-# ======================= 解耦头=============================#
-class DecoupledHead(nn.Module):
-    def __init__(self, ch=256, nc=80, anchors=()):
-        super().__init__()
-        self.nc = nc  # number of classes
-        self.nl = len(anchors)  # number of detection layers
-        self.na = len(anchors[0]) // 2  # number of anchors
-        self.merge = Conv(ch, 256, 1, 1)
-        self.cls_convs1 = GhostConv(256, 256, 3, 1, 1)
-        self.cls_convs2 = Conv(256, 256, 3, 1, 1)
-        self.reg_convs1 = GhostConv(256, 256, 3, 1, 1)
-        self.reg_convs2 = Conv(256, 256, 3, 1, 1)
-        self.cls_preds = nn.Conv2d(256, self.nc * self.na, 1)  # 一个1x1的卷积，把通道数变成类别数，比如coco 80类（主要对目标框的类别，预测分数）
-        self.reg_preds = nn.Conv2d(256, 4 * self.na, 1)  # 一个1x1的卷积，把通道数变成4通道，因为位置是xywh
-        self.obj_preds = nn.Conv2d(256, 1 * self.na, 1)  # 一个1x1的卷积，把通道数变成1通道，通过一个值即可判断有无目标（置信度）
-
-    def forward(self, x):
-        x = self.merge(x)
-        x1 = self.cls_convs1(x)
-        x1 = self.cls_convs2(x1)
-        x1 = self.cls_preds(x1)
-        x2 = self.reg_convs1(x)
-        x2 = self.reg_convs2(x2)
-        x21 = self.reg_preds(x2)
-        x22 = self.obj_preds(x2)
-        out = torch.cat([x21, x22, x1], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
-        return out
-
-
-class Decoupled_Detect(nn.Module):
-    stride = None  # strides computed during build
-    onnx_dynamic = False  # ONNX export parameter
-    export = False  # export mode
-
-    def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
-        super().__init__()
-
-        self.nc = nc  # number of classes
-        self.no = nc + 5  # number of outputs per anchor
-        self.nl = len(anchors)  # number of detection layers
-        self.na = len(anchors[0]) // 2  # number of anchors
-        self.grid = [torch.zeros(1)] * self.nl  # init grid
-        self.anchor_grid = [torch.zeros(1)] * self.nl  # init anchor grid
-        self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
-        self.m = nn.ModuleList(DecoupledHead(x, nc, anchors) for x in ch)
-        self.inplace = inplace  # use in-place ops (e.g. slice assignment)
-
-    def forward(self, x):
-        z = []  # inference output
-        for i in range(self.nl):
-            x[i] = self.m[i](x[i])  # conv
-            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
-            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
-
-            if not self.training:  # inference
-                if self.onnx_dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
-
-                y = x[i].sigmoid()
-                if self.inplace:
-                    y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
-                    y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
-                else:  # for YOLOv5s on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
-                    xy, wh, conf = y.split((2, 2, self.nc + 1), 4)  # y.tensor_split((2, 4, 5), 4)  # torch 1.8.0
-                    xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
-                    wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
-                    y = torch.cat((xy, wh, conf), 4)
-                z.append(y.view(bs, -1, self.no))
-
-        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
-
-    def _make_grid(self, nx=20, ny=20, i=0):
-        d = self.anchors[i].device
-        t = self.anchors[i].dtype
-        shape = 1, self.na, ny, nx, 2  # grid shape
-        y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
-        if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
-            yv, xv = torch.meshgrid(y, x, indexing='ij')
-        else:
-            yv, xv = torch.meshgrid(y, x)
-        grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
-        anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
-        return grid, anchor_grid
-
-
-# ====================================== ASFF ===========================================#
-class ASFFV5(nn.Module):
-    def __init__(self, level, multiplier=1, rfb=False, vis=False, act_cfg=True):
-        """
-        ASFF version for YoloV5 .
-        different than YoloV3
-        multiplier should be 1, 0.5
-        which means, the channel of ASFF can be
-        512, 256, 128 -> multiplier=1
-        256, 128, 64 -> multiplier=0.5
-        For even smaller, you need change code manually.
-        """
-        super(ASFFV5, self).__init__()
-        self.level = level
-        self.dim = [int(1024 * multiplier), int(512 * multiplier),
-                    int(256 * multiplier)]
-        # print(self.dim)
-
-        self.inter_dim = self.dim[self.level]
-        if level == 0:
-            self.stride_level_1 = Conv(int(512 * multiplier), self.inter_dim, 3, 2)
-
-            self.stride_level_2 = Conv(int(256 * multiplier), self.inter_dim, 3, 2)
-
-            self.expand = Conv(self.inter_dim, int(
-                1024 * multiplier), 3, 1)
-        elif level == 1:
-            self.compress_level_0 = Conv(
-                int(1024 * multiplier), self.inter_dim, 1, 1)
-            self.stride_level_2 = Conv(
-                int(256 * multiplier), self.inter_dim, 3, 2)
-            self.expand = Conv(self.inter_dim, int(512 * multiplier), 3, 1)
-        elif level == 2:
-            self.compress_level_0 = Conv(
-                int(1024 * multiplier), self.inter_dim, 1, 1)
-            self.compress_level_1 = Conv(
-                int(512 * multiplier), self.inter_dim, 1, 1)
-            self.expand = Conv(self.inter_dim, int(
-                256 * multiplier), 3, 1)
-
-        # when adding rfb, we use half number of channels to save memory
-        compress_c = 8 if rfb else 16
-        self.weight_level_0 = Conv(
-            self.inter_dim, compress_c, 1, 1)
-        self.weight_level_1 = Conv(
-            self.inter_dim, compress_c, 1, 1)
-        self.weight_level_2 = Conv(
-            self.inter_dim, compress_c, 1, 1)
-
-        self.weight_levels = Conv(
-            compress_c * 3, 3, 1, 1)
-        self.vis = vis
-
-    def forward(self, x):  # l,m,s
-        """
-        # 128, 256, 512
-        512, 256, 128
-        from small -> large
-        """
-        x_level_0 = x[2]  # l
-        x_level_1 = x[1]  # m
-        x_level_2 = x[0]  # s
-        # print('x_level_0: ', x_level_0.shape)
-        # print('x_level_1: ', x_level_1.shape)
-        # print('x_level_2: ', x_level_2.shape)
-        if self.level == 0:
-            level_0_resized = x_level_0
-            level_1_resized = self.stride_level_1(x_level_1)
-            level_2_downsampled_inter = F.max_pool2d(
-                x_level_2, 3, stride=2, padding=1)
-            level_2_resized = self.stride_level_2(level_2_downsampled_inter)
-        elif self.level == 1:
-            level_0_compressed = self.compress_level_0(x_level_0)
-            level_0_resized = F.interpolate(
-                level_0_compressed, scale_factor=2, mode='nearest')
-            level_1_resized = x_level_1
-            level_2_resized = self.stride_level_2(x_level_2)
-        elif self.level == 2:
-            level_0_compressed = self.compress_level_0(x_level_0)
-            level_0_resized = F.interpolate(
-                level_0_compressed, scale_factor=4, mode='nearest')
-            x_level_1_compressed = self.compress_level_1(x_level_1)
-            level_1_resized = F.interpolate(
-                x_level_1_compressed, scale_factor=2, mode='nearest')
-            level_2_resized = x_level_2
-
-        # print('level: {}, l1_resized: {}, l2_resized: {}'.format(self.level,
-        #      level_1_resized.shape, level_2_resized.shape))
-        level_0_weight_v = self.weight_level_0(level_0_resized)
-        level_1_weight_v = self.weight_level_1(level_1_resized)
-        level_2_weight_v = self.weight_level_2(level_2_resized)
-        # print('level_0_weight_v: ', level_0_weight_v.shape)
-        # print('level_1_weight_v: ', level_1_weight_v.shape)
-        # print('level_2_weight_v: ', level_2_weight_v.shape)
-
-        levels_weight_v = torch.cat(
-            (level_0_weight_v, level_1_weight_v, level_2_weight_v), 1)
-        levels_weight = self.weight_levels(levels_weight_v)
-        levels_weight = F.softmax(levels_weight, dim=1)
-
-        fused_out_reduced = level_0_resized * levels_weight[:, 0:1, :, :] + \
-                            level_1_resized * levels_weight[:, 1:2, :, :] + \
-                            level_2_resized * levels_weight[:, 2:, :, :]
-
-        out = self.expand(fused_out_reduced)
-
-        if self.vis:
-            return out, levels_weight, fused_out_reduced.sum(dim=1)
-        else:
-            return out
-
-
-class ASFF_Detect(nn.Module):  # add ASFFV5 layer and Rfb
-    stride = None  # strides computed during build
-    onnx_dynamic = False  # ONNX export parameter
-    export = False  # export mode
-
-    def __init__(self, nc=80, anchors=(), ch=(), multiplier=0.5, rfb=False, inplace=True):  # detection layer
-        super().__init__()
-        self.nc = nc  # number of classes
-        self.no = nc + 5  # number of outputs per anchor
-        self.nl = len(anchors)  # number of detection layers
-        self.na = len(anchors[0]) // 2  # number of anchors
-        self.grid = [torch.zeros(1)] * self.nl  # init grid
-        self.l0_fusion = ASFFV5(level=0, multiplier=multiplier, rfb=rfb)
-        self.l1_fusion = ASFFV5(level=1, multiplier=multiplier, rfb=rfb)
-        self.l2_fusion = ASFFV5(level=2, multiplier=multiplier, rfb=rfb)
-        self.anchor_grid = [torch.zeros(1)] * self.nl  # init anchor grid
-        self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
-        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
-        self.inplace = inplace  # use in-place ops (e.g. slice assignment)
-
-    def forward(self, x):
-        z = []  # inference output
-        result = []
-
-        result.append(self.l2_fusion(x))
-        result.append(self.l1_fusion(x))
-        result.append(self.l0_fusion(x))
-        x = result
-        for i in range(self.nl):
-            x[i] = self.m[i](x[i])  # conv
-            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
-            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
-
-            if not self.training:  # inference
-                if self.onnx_dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
-
-                y = x[i].sigmoid()  # https://github.com/iscyy/yoloair
-                if self.inplace:
-                    y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
-                    y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
-                else:  # for YOLOv5s on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
-                    xy, wh, conf = y.split((2, 2, self.nc + 1), 4)  # y.tensor_split((2, 4, 5), 4)  # torch 1.8.0
-                    xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
-                    wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
-                    y = torch.cat((xy, wh, conf), 4)
-                z.append(y.view(bs, -1, self.no))
-
-        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
-
-    def _make_grid(self, nx=20, ny=20, i=0):
-        d = self.anchors[i].device
-        t = self.anchors[i].dtype
-        shape = 1, self.na, ny, nx, 2  # grid shape
-        y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
-        if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
-            yv, xv = torch.meshgrid(y, x, indexing='ij')
-        else:
-            yv, xv = torch.meshgrid(y, x)
-        grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
-        anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
-        # print(anchor_grid)
-        return grid, anchor_grid
-
-
-
-
-class SE(nn.Module):
-    def __init__(self, c1, c2, r=16):
-        super(SE, self).__init__()
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.l1 = nn.Linear(c1, c1 // r, bias=False)
-        self.relu = nn.ReLU(inplace=True)
-        self.l2 = nn.Linear(c1 // r, c1, bias=False)
-        self.sig = nn.Sigmoid()
-    def forward(self, x):
-        print(x.size())
-        b, c, _, _ = x.size()
-        y = self.avgpool(x).view(b, c)
-        y = self.l1(y)
-        y = self.relu(y)
-        y = self.l2(y)
-        y = self.sig(y)
-        y = y.view(b, c, 1, 1)
-        return x * y.expand_as(x)
-
-
-class ChannelAttentionModule(nn.Module):
-    def __init__(self, c1, reduction=16):
-        super(ChannelAttentionModule, self).__init__()
-        mid_channel = c1 // reduction
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
-
-        self.shared_MLP = nn.Sequential(
-            nn.Linear(in_features=c1, out_features=mid_channel),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Linear(in_features=mid_channel, out_features=c1)
-        )
-        self.act = nn.Sigmoid()
-        # self.act=nn.SiLU()
-
-    def forward(self, x):
-        avgout = self.shared_MLP(self.avg_pool(x).view(x.size(0), -1)).unsqueeze(2).unsqueeze(3)
-        maxout = self.shared_MLP(self.max_pool(x).view(x.size(0), -1)).unsqueeze(2).unsqueeze(3)
-        return self.act(avgout + maxout)
-
-
-class SpatialAttentionModule(nn.Module):
-    def __init__(self):
-        super(SpatialAttentionModule, self).__init__()
-        self.conv2d = nn.Conv2d(in_channels=2, out_channels=1, kernel_size=7, stride=1, padding=3)
-        self.act = nn.Sigmoid()
-
-    def forward(self, x):
-        avgout = torch.mean(x, dim=1, keepdim=True)
-        maxout, _ = torch.max(x, dim=1, keepdim=True)
-        out = torch.cat([avgout, maxout], dim=1)
-        out = self.act(self.conv2d(out))
-        return out
-
-
-class CBAM(nn.Module):
-    def __init__(self, c1, c2):
-        super(CBAM, self).__init__()
-        self.channel_attention = ChannelAttentionModule(c1)
-        self.spatial_attention = SpatialAttentionModule()
-
-    def forward(self, x):
-        out = self.channel_attention(x) * x
-        out = self.spatial_attention(out) * out
-        return out
-
-
-class ECA(nn.Module):
-    """Constructs a ECA module.
-    Args:
-        channel: Number of channels of the input feature map
-        k_size: Adaptive selection of kernel size
-    """
-
-    def __init__(self, c1, c2, k_size=3):
-        super(ECA, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        # feature descriptor on the global spatial information
-        y = self.avg_pool(x)
-        y = self.conv(y.squeeze(-1).transpose(-1, -2)).transpose(-1, -2).unsqueeze(-1)
-        # Multi-scale information fusion
-        y = self.sigmoid(y)
-
-        return x * y.expand_as(x)
-
-
-
-
-
-
-from torchvision import models
-'''
-模型：mobilenet_v3_small
-'''
-class MobileNetV3s1(nn.Module):
-    # out channel 24
-    def __init__(self, ignore) -> None:
-        super().__init__()
-        model = models.mobilenet_v3_small
-        modules = list(model.children())
-        modules = modules[0][:4]
-        self.model = nn.Sequential(*modules)
-
-    def forward(self, x):
-        return self.model(x)
-
-class MobileNetV3s2(nn.Module):
-    # out 48 channel
-    def __init__(self, ignore) -> None:
-        super().__init__()
-        model = models.mobilenet_v3_small
-        modules = list(model.children())
-        modules = modules[0][4:9]
-        self.model = nn.Sequential(*modules)
-
-    def forward(self, x):
-        return self.model(x)
-
-class MobileNetV3s3(nn.Module):
-    # out 576 channel
-    def __init__(self, ignore) -> None:
-        super().__init__()
-        model = models.mobilenet_v3_small
-        modules = list(model.children())
-        modules = modules[0][9:]
-        self.model = nn.Sequential(*modules)
-    def forward(self, x):
-        return self.model(x)
-
-
-
-
-class SimAM(torch.nn.Module):
-    def __init__(self, channels=None, out_channels=None, e_lambda=1e-4):
-        super(SimAM, self).__init__()
-
-        self.activaton = nn.Sigmoid()
-        self.e_lambda = e_lambda
-
-    def __repr__(self):
-        s = self.__class__.__name__ + '('
-        s += ('lambda=%f)' % self.e_lambda)
-        return s
-
-    @staticmethod
-    def get_module_name():
-        return "simam"
-
-    def forward(self, x):
-        b, c, h, w = x.size()
-
-        n = w * h - 1
-
-        x_minus_mu_square = (x - x.mean(dim=[2, 3], keepdim=True)).pow(2)
-        y = x_minus_mu_square / (4 * (x_minus_mu_square.sum(dim=[2, 3], keepdim=True) / n + self.e_lambda)) + 0.5
-
-        return x * self.activaton(y)
-
-
-# ---------------------------- ShuffleBlock start -------------------------------
-
-# 通道重排，跨group信息交流
-def channel_shuffle(x, groups):
-    batchsize, num_channels, height, width = x.data.size()
-    channels_per_group = num_channels // groups
-
-    # reshape
-    x = x.view(batchsize, groups,
-               channels_per_group, height, width)
-
-    x = torch.transpose(x, 1, 2).contiguous()
-
-    # flatten
-    x = x.view(batchsize, -1, height, width)
-
-    return x
-
-
-class conv_bn_relu_maxpool(nn.Module):
-    def __init__(self, c1, c2):  # ch_in, ch_out
-        super(conv_bn_relu_maxpool, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(c1, c2, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(c2),
-            nn.ReLU(inplace=True),
-        )
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
-
-    def forward(self, x):
-        return self.maxpool(self.conv(x))
-
-
-class Shuffle_Block(nn.Module):
-    def __init__(self, inp, oup, stride):
-        super(Shuffle_Block, self).__init__()
-
-        if not (1 <= stride <= 3):
-            raise ValueError('illegal stride value')
-        self.stride = stride
-
-        branch_features = oup // 2
-        assert (self.stride != 1) or (inp == branch_features << 1)
-
-        if self.stride > 1:
-            self.branch1 = nn.Sequential(
-                self.depthwise_conv(inp, inp, kernel_size=3, stride=self.stride, padding=1),
-                nn.BatchNorm2d(inp),
-                nn.Conv2d(inp, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm2d(branch_features),
-                nn.ReLU(inplace=True),
-            )
-
-        self.branch2 = nn.Sequential(
-            nn.Conv2d(inp if (self.stride > 1) else branch_features,
-                      branch_features, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(branch_features),
-            nn.ReLU(inplace=True),
-            self.depthwise_conv(branch_features, branch_features, kernel_size=3, stride=self.stride, padding=1),
-            nn.BatchNorm2d(branch_features),
-            nn.Conv2d(branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(branch_features),
-            nn.ReLU(inplace=True),
-        )
-
-    @staticmethod
-    def depthwise_conv(i, o, kernel_size, stride=1, padding=0, bias=False):
-        return nn.Conv2d(i, o, kernel_size, stride, padding, bias=bias, groups=i)
-
-    def forward(self, x):
-        if self.stride == 1:
-            x1, x2 = x.chunk(2, dim=1)  # 按照维度1进行split
-            out = torch.cat((x1, self.branch2(x2)), dim=1)
-        else:
-            out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
-
-        out = channel_shuffle(out, 2)
-
-        return out
-
-
-# ---------------------------- ShuffleBlock end --------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
