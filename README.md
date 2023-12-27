@@ -1,5 +1,5 @@
 # Insulator-defect-detection
 
 
-## Dateste
+## Dataset
 The full data set will be published later
