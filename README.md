@@ -1,4 +1,4 @@
-# Insulator-defect-detection
+# LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection
 
 ## Summary
 Addressing the issues of low detection speed, suboptimal accuracy, and challenges in deploying existing insulator defect detection methods on embedded terminals, we propose a lightweight insulator defect detection algorithm, LiteYOLO-ID, based on the improvement of YOLOv5. When compared to the original YOLOv5s on the IDID-Plus dataset, our model exhibits a reduction of 47.13% in model parameters and an improvement of 1% in average precision (mAP0.5). Following TensorRT optimization, the LiteYOLO-ID algorithm achieves an inference speed of 20.2 FPS on the Jetson TX2 NX, representing a 15.56% enhancement over the original YOLOv5s. This performance meets the real-time detection requirements for insulator defects.
