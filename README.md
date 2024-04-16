@@ -19,7 +19,7 @@ The full data set will be published later.
 ![Experimental procedure：](chart_experiment.png)
 
 ## Detection result
-![Comparison chart of test results：](Comparison chart of detection results1.png)
+![Comparison chart of test results：](Comparison_chart_of_detection_results.png)
 
 
 ## Author's Contact
