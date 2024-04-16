@@ -21,7 +21,7 @@ The full data set will be published later.
 ![Experimental procedure：](chart_experiment.png)
 
 ## Actual detection output on Jetson TX2 NX
-![Experimental procedure：](chart_experiment.png)
+![Experimental procedure：](jetson_tx2_nx.png)
 
 ## Detection result
 ![Comparison chart of test results：](Comparison_chart_of_detection_results.png)
