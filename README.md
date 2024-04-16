@@ -11,6 +11,7 @@ Insulator defect detection is of great significance to ensure the normal operati
 ## EGC Schematic Diagram
 
 ## LiteYOLO-ID Schematic Diagram
+The LiteYOLO-ID architecture diagram will be released after the paper is published
 
 ## Dataset
 The full data set will be published later.
