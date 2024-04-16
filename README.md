@@ -19,7 +19,7 @@ The full data set will be published later.
 ![Experimental procedure：](chart_experiment.png)
 
 ## Detection result
-![Comparison chart of test results：](Insulator_defect_detection_results_chart.png)
+![Comparison chart of test results：](Comparison chart of detection results1.png)
 
 
 ## Author's Contact
