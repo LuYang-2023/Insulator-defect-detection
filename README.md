@@ -23,6 +23,8 @@ The full data set will be published later.
 ## Detection result
 ![Comparison chart of test results：](Comparison_chart_of_detection_results.png)
 
+![Comparison chart of detection results：](Comparison_chart_of_detection_results.png)
+
 
 ## Author's Contact
 Email：ly13063414159@163.com
