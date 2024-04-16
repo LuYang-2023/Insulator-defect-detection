@@ -23,7 +23,7 @@ The full data set will be published later.
 ## Detection result
 ![Comparison chart of test results：](Comparison_chart_of_detection_results.png)
 
-![Comparison chart of detection results：](Comparison_chart_of_detection_results.png)
+![LiteYOLO-ID detection result diagram：](LiteYOLO-ID_detection_result_diagram.png.png)
 
 
 ## Author's Contact
