@@ -21,6 +21,7 @@ The full data set will be published later.
 ![Experimental procedure：](chart_experiment.png)
 
 ## Actual detection output on Jetson TX2 NX
+The hardware and software configuration of the Jetson TX2 NX includes an NVIDIA Pascal GPU, with PyTorch version 1.8.0 and CUDA version 10.2.
 ![Experimental procedure：](jetson_tx2_nx.png)
 
 ## Detection result
