@@ -1,8 +1,5 @@
 # LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection
 
-**Dear reviewers: The source code and pre-trained model weights will be available upon the acceptance of the paper.   Feel free to raise your questions or difficulties in the implementation.**
-
-Paper submission number TIM-23-08169R2 was submitted to ieee transactions on instrumentation and measurement.
 
 ## <div align="left">Quick Start Examples</div>
 
