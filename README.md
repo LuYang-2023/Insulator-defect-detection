@@ -66,7 +66,10 @@ My dataset contains sensitive information from the Tianjin Power Grid Company, a
 
 ## Actual detection output on Jetson TX2 NX
 The hardware and software configuration of the Jetson TX2 NX includes an NVIDIA Pascal GPU, with PyTorch version 1.8.0 and CUDA version 10.2.
-![Experimental procedure：](jetson_tx2_nx.png)
+
+<div align="center">
+    <img src="jetson_tx2_nx.png" width="800" alt="jetson_tx2_nx">
+</div>
 
 ## Detection result
 ![Comparison chart of test results：](Comparison_chart_of_detection_results.png)
