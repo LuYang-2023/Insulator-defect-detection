@@ -63,6 +63,21 @@ The hardware and software configuration of the Jetson TX2 NX includes an NVIDIA 
 
 ![LiteYOLO-ID detection result diagram：](LiteYOLO-ID_detection_result_diagram.png)
 
+### Citation
+If you use this code or article in your research, please cite it using the following BibTeX entry:
+
+```bibtex
+@ARTICLE{10569022,
+  author = {Li, Dahua and Lu, Yang and Gao, Qiang and Li, Xuan and Yu, Xiao and Song, Yu},
+  title = {LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection},
+  journal = {IEEE Transactions on Instrumentation and Measurement},
+  year = {2024},
+  volume = {73},
+  pages = {1-12},
+  doi = {10.1109/TIM.2024.3418082},
+  keywords = {Insulators, Accuracy, Computational modeling, Defect detection, YOLO, Feature extraction, Neck, Deep learning, insulator defect detection, lightweight, quantification, deployment}
+}
+
 
 ## Author's Contact
 Email：ly13063414159@163.com
