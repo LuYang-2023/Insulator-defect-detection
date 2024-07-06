@@ -47,13 +47,8 @@ The EGC module structure diagram will be released after the paper is published.
 The LiteYOLO-ID architecture diagram will be released after the paper is published.
 
 ## Dataset
-My dataset contains sensitive information from the Tianjin Power Grid Company, and I need to communicate with them first to confirm whether this data can be made public. In the meantime, I have also prepared an alternative dataset, which can be used for code debugging and model training. The link to the dataset is as follows:
+My dataset contains sensitive information from the Tianjin Power Grid Company, and I need to communicate with them first to confirm whether this data can be made public. 
 
-
-Link: https://pan.baidu.com/s/1uZE5lLYw__pPuyHU8z1jkw
-
-
-Access Code: 45m8
 
 ## Experimental flow chart
 ![Experimental procedure：](chart_experiment.png)
