@@ -77,6 +77,7 @@ If you use this code or article in your research, please cite it using the follo
   doi = {10.1109/TIM.2024.3418082},
   keywords = {Insulators, Accuracy, Computational modeling, Defect detection, YOLO, Feature extraction, Neck, Deep learning, insulator defect detection, lightweight, quantification, deployment}
 }
+```
 
 
 ## Author's Contact
