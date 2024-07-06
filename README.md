@@ -72,9 +72,14 @@ The hardware and software configuration of the Jetson TX2 NX includes an NVIDIA 
 </div>
 
 ## Detection result
-![Comparison chart of test results：](Comparison_chart_of_detection_results.png)
+<div align="center">
+    <img src="Comparison_chart_of_detection_results.png" width="800" alt="Comparison chart of test results">
+</div>
 
-![LiteYOLO-ID detection result diagram：](LiteYOLO-ID_detection_result_diagram.png)
+<div align="center">
+    <img src="LiteYOLO-ID_detection_result_diagram.png" width="800" alt="LiteYOLO-ID detection result diagram">
+</div>
+
 
 ### Citation
 If you use this code or article in your research, please cite it using the following BibTeX entry:
