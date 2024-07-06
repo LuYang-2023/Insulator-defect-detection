@@ -49,7 +49,10 @@ The lightweight convolutional module EGC incorporates the design philosophies of
 
 
 ## LiteYOLO-ID Schematic Diagram
-The LiteYOLO-ID architecture diagram will be released after the paper is published.
+
+<div align="center">
+    <img src="EGC.png" width="400" alt="EGC module">
+</div>
 
 ## Dataset
 My dataset contains sensitive information from the Tianjin Power Grid Company, and I need to communicate with them first to confirm whether this data can be made public. 
