@@ -41,7 +41,9 @@ Insulator defect detection is of great significance to ensure the normal operati
 
 
 ## EGC Schematic Diagram
-The EGC module structure diagram will be released after the paper is published.
+The lightweight convolutional module EGC incorporates the design philosophies of GhostNet and C2f modules, significantly enhancing the capture of key information in detection targets through the ECA attention mechanism. The structural diagram of the EGC module is shown below.
+
+
 
 ## LiteYOLO-ID Schematic Diagram
 The LiteYOLO-ID architecture diagram will be released after the paper is published.
