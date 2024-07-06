@@ -61,7 +61,7 @@ My dataset contains sensitive information from the Tianjin Power Grid Company, a
 ## Experimental flow chart
 
 <div align="center">
-    <img src="chart_experiment.png" width="800" alt="Experimental procedure">
+    <img src="chart_experiment.png" width="900" alt="Experimental procedure">
 </div>
 
 ## Actual detection output on Jetson TX2 NX
