@@ -51,7 +51,7 @@ The lightweight convolutional module EGC incorporates the design philosophies of
 ## LiteYOLO-ID Schematic Diagram
 
 <div align="center">
-    <img src="EGC.png" width="400" alt="EGC module">
+    <img src="LiteYOLO-ID_RE.png" width="400" alt="LiteYOLO-ID">
 </div>
 
 ## Dataset
