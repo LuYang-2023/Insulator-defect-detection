@@ -1,5 +1,12 @@
 # LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection
 
+## Introduction
+This is our PyTorch implementation of the paper "[`LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection`](https://doi.org/10.1109/tim.2024.3418082)" published in IEEE Transactions on Instrumentation and Measurement.
+
+<div align="center">
+    <img src="LiteYOLO-ID_RE.png" width="1000" alt="LiteYOLO-ID">
+</div>
+
 
 ## <div align="left">Quick Start Examples</div>
 
@@ -36,8 +43,7 @@ python val.py --data data/mydata.yaml --weights best.pt --task test
 ```
 </details>
 
-## Summary
-Insulator defect detection is of great significance to ensure the normal operation of power transmission and distribution networks. In response to the problems of low speed, low accuracy, and difficulty in deploying to embedded terminals in existing insulator defect detection, this paper proposes a lightweight insulator defect detection model based on an improved YOLOv5s, named LiteYOLO-ID. Firstly, to significantly reduce the model parameters while maintaining detection accuracy, we design a new lightweight convolution module called EGC (ECA-GhostNet-C2f). Secondly, based on the EGC module, we construct the EGC-CSPGhostNet backbone network, which optimizes the feature extraction process and achieves model compression. Additionally, we design a lightweight neck network, EGC-PANet, to further reduce the parameter count and achieve efficient feature fusion. Experimental results show that on the IDID-Plus dataset, compared to the original YOLOv5s model, not only does LiteYOLO-ID reduce the model parameters by 47.13%, but it also improves the mAP(0.5) by 1%. Furthermore, the generalization of the model is validated on the Pascal VOC dataset and the SFID dataset. Importantly, after TensorRT optimization, the inference speed of the LiteYOLO-ID algorithm on the Jetson TX2 NX reaches 20.2 FPS, meeting the real-time detection requirements of insulator defects.
+
 
 
 ## EGC Schematic Diagram
@@ -48,11 +54,6 @@ The lightweight convolutional module EGC incorporates the design philosophies of
 </div>
 
 
-## LiteYOLO-ID Schematic Diagram
-
-<div align="center">
-    <img src="LiteYOLO-ID_RE.png" width="1000" alt="LiteYOLO-ID">
-</div>
 
 ## Dataset
 My dataset contains sensitive information from the Tianjin Power Grid Company, and I need to communicate with them first to confirm whether this data can be made public. 
