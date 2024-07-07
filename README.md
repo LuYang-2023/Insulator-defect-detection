@@ -1,7 +1,7 @@
 # LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection
 
 ## Introduction
-This is our PyTorch implementation of the paper "[`LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection`](https://doi.org/10.1109/tim.2024.3418082)" published in IEEE Transactions on Instrumentation and Measurement.
+This is our PyTorch implementation of the paper "[`LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection`](https://doi.org/10.1109/tim.2024.3418082)" published in ***IEEE Transactions on Instrumentation and Measurement***.
 
 <div align="center">
     <img src="LiteYOLO-ID_RE.png" width="1000" alt="LiteYOLO-ID">
