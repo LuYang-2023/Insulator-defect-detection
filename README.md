@@ -56,8 +56,11 @@ The lightweight convolutional module EGC incorporates the design philosophies of
 
 
 ## Dataset
-My dataset contains sensitive information from the Tianjin Power Grid Company, and I need to communicate with them first to confirm whether this data can be made public. 
+I will first provide links to Baidu.com discs for some of the datasets. More specific datasets involve confidential information from Tianjin Grid, and I need to discuss with them whether they can be made public. However, the datasets I provided are sufficient for code debugging and model training. The links to the datasets are below:
 
+Link: https://pan.baidu.com/s/1inULMZcnibOsfjXvJQiFjQ
+
+Extraction code: 8kdy
 
 ## Experimental flow chart
 
