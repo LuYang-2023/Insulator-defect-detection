@@ -1,5 +1,12 @@
 # LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection
 
+## Dataset
+***I will first provide links to Baidu.com discs for some of the datasets. More specific datasets involve confidential information from Tianjin Grid, and I need to discuss with them whether they can be made public. However, the datasets I provided are sufficient for code debugging and model training. The links to the datasets are below:***
+
+**Link:** https://pan.baidu.com/s/1inULMZcnibOsfjXvJQiFjQ
+
+**Extraction code:** 8kdy
+
 ## Introduction
 This is our PyTorch implementation of the paper "[`LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection`](https://doi.org/10.1109/tim.2024.3418082)" published in ***IEEE Transactions on Instrumentation and Measurement***.
 
@@ -53,14 +60,6 @@ The lightweight convolutional module EGC incorporates the design philosophies of
     <img src="EGC.png" width="300" alt="EGC module">
 </div>
 
-
-
-## Dataset
-I will first provide links to Baidu.com discs for some of the datasets. More specific datasets involve confidential information from Tianjin Grid, and I need to discuss with them whether they can be made public. However, the datasets I provided are sufficient for code debugging and model training. The links to the datasets are below:
-
-Link: https://pan.baidu.com/s/1inULMZcnibOsfjXvJQiFjQ
-
-Extraction code: 8kdy
 
 ## Experimental flow chart
 
