@@ -373,9 +373,6 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             t = m
             m = timm.create_model(m, pretrained=args[0], features_only=True)
             c2 = m.feature_info.channels()
-        elif m in {efficientvit_b0, efficientvit_b1, efficientvit_b2, efficientvit_b3, efficientformerv2_s0}:
-            m = m(*args)
-            c2 = m.channel
         else:
             c2 = ch[f]
         if isinstance(c2, list):
