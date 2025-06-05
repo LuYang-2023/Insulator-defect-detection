@@ -7,6 +7,8 @@
 
 **Extraction code:** 8kdy
 
+**Google Drive download link：** https://drive.google.com/file/d/1QOFg5iCop9Jb9uAjiNelYvELOmUWGMs-/view?usp=drive_link
+
 ## Introduction
 This is our PyTorch implementation of the paper "[`LiteYOLO-ID: A Lightweight Object Detection Network for Insulator Defect Detection`](https://doi.org/10.1109/tim.2024.3418082)" published in ***IEEE Transactions on Instrumentation and Measurement***.
 
